@@ -6,7 +6,8 @@
 # Make it executable:
 # chmod +x ~/Scripts/my-bg-music.sh
 #
-# Set to Autostart
+# Set to Autostart 
+# Test
 
 # --- CLI / IPC files ---
 PID_FILE="/tmp/my-bg-music.pid"
