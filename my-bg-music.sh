@@ -82,11 +82,11 @@ MUSIC_DIR="/home/cafeine/Music/Background Music/"
 VOLUME_PERCENT=40  # 0-100
 
 # Fade config
-FADE_SECONDS=5
-FADE_STEPS=20
+FADE_SECONDS=10
+FADE_STEPS=10
 
 # Resume background music only after other audio has been silent for X seconds
-RESUME_DELAY_SECONDS=10   # ← change this to whatever you want
+RESUME_DELAY_SECONDS=30   # ← change this to whatever you want
 
 SCALE=$((32768 * VOLUME_PERCENT / 100))
 
@@ -194,6 +194,8 @@ fade_to() {
     set_sink_input_vol_percent "$sid" 0
     sleep "$sleep_s"
 
+    echo "Fade in"
+
     for ((i=1; i<=FADE_STEPS; i++)); do
       sid="$(get_mpg123_sink_id)"
       [ -z "$sid" ] && { sleep "$sleep_s"; continue; }
@@ -202,6 +204,8 @@ fade_to() {
       sleep "$sleep_s"
     done
   else
+    echo "Fade out"
+
     for ((i=FADE_STEPS-1; i>=0; i--)); do
       sid="$(get_mpg123_sink_id)"
       [ -z "$sid" ] && { sleep "$sleep_s"; continue; }
