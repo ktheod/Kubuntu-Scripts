@@ -22,10 +22,13 @@ Designed and tested on Kubuntu / Plasma, but should work on most modern Linux de
 
 🖥️ Simple CLI control: pause / resume / status
 
+🧷 Optional tray icon with hover "Now Playing" tooltip
+
 🔄 Auto-recovers if mpg123 crashes or restarts
 
 📦 Requirements
 sudo apt install mpg123 pulseaudio-utils
+sudo apt install yad python3-pyqt5   # tray support (X11 or Wayland)
 
 
 PipeWire is supported automatically via pipewire-pulse.
@@ -34,7 +37,8 @@ PipeWire is supported automatically via pipewire-pulse.
 
 Edit these variables at the top of the script:
 
-MUSIC_DIR="/home/USER/Music/Background Music/"
+MP3_SUBDIR="Background Music"
+MUSIC_DIR="$SCRIPT_DIR/$MP3_SUBDIR"
 VOLUME_PERCENT=55
 FADE_SECONDS=5
 FADE_STEPS=20
@@ -42,7 +46,8 @@ RESUME_DELAY_SECONDS=10
 
 Parameter explanation
 Variable	Description
-MUSIC_DIR	Folder containing MP3 files to play
+MP3_SUBDIR	Subfolder under the script folder that contains MP3 files
+MUSIC_DIR	Full path to the MP3 folder (auto-built from SCRIPT_DIR + MP3_SUBDIR)
 VOLUME_PERCENT	Target background music volume (0–100)
 FADE_SECONDS	Total duration of fade in/out
 FADE_STEPS	Number of volume steps during fade
@@ -87,6 +92,15 @@ Currently playing track is logged to:
 
 
 Useful for debugging or status checks.
+
+🧷 Tray Icon (KDE/Plasma)
+
+The script auto-starts a tray icon when a desktop session is active.
+
+Hover the tray icon to see the current track (pulled from the now-playing log).
+
+The stream icon in the KDE Audio Volume > Applications panel is set to:
+PULSE_PROP_application.icon_name=audio-volume-high
 
 🧯 Safety Notes
 
