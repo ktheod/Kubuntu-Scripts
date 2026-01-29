@@ -115,6 +115,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MP3_SUBDIR="Background Music"
 MUSIC_DIR="$SCRIPT_DIR/$MP3_SUBDIR"
 VOLUME_PERCENT=37  # 0-100
+SHOW_TRAY=1        # 1 = show tray icon, 0 = disable tray icon
 
 # Fade config
 FADE_SECONDS=10
@@ -157,6 +158,10 @@ wait_for_pactl() {
 }
 
 start_tray() {
+  if [[ "$SHOW_TRAY" -ne 1 ]]; then
+    return 0
+  fi
+
   if [[ -f "$TRAY_PID_FILE" ]]; then
     tray_pid="$(cat "$TRAY_PID_FILE" 2>/dev/null)"
     if [[ -n "$tray_pid" ]] && kill -0 "$tray_pid" 2>/dev/null; then
