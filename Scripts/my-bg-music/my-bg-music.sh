@@ -1,18 +1,19 @@
 #!/bin/bash
 
 # Instructions
-# sudo apt install mpg123 pulseaudio-utils
+# sudo apt install mpg123 pulseaudio-utils yad python3-pyqt5
 #
 # Make it executable:
 # chmod +x ~/Scripts/my-bg-music.sh
 #
-# Set to Autostart 
+# Set to Autostart
 
 # --- CLI / IPC files ---
 PID_FILE="/tmp/my-bg-music.pid"
 STATE_FILE="/tmp/my-bg-music.state"
+TRAY_PID_FILE="/tmp/my-bg-music.tray.pid"
 
-# --- CLI mode: pause|resume|status ---
+# --- CLI mode: pause|resume|next|tray-quit|status ---
 cmd="${1:-}"
 if [[ -n "$cmd" ]]; then
   if [[ ! -f "$PID_FILE" ]]; then
@@ -29,14 +30,36 @@ if [[ -n "$cmd" ]]; then
 
   case "$cmd" in
     pause)
+      echo "Tray action: pause"
       kill -USR1 "$pid"
-      echo "ok"
       exit 0
       ;;
     resume)
+      echo "Tray action: resume"
       kill -USR2 "$pid"
-      echo "ok"
       exit 0
+      ;;
+    next)
+      if pgrep -x "mpg123" >/dev/null; then
+        echo "Tray action: next"
+        pkill -INT -x "mpg123"
+        exit 0
+      fi
+      echo "mpg123 not running"
+      exit 1
+      ;;
+    tray-quit)
+      if [[ -f "$TRAY_PID_FILE" ]]; then
+        echo "Tray action: quit"
+        tray_pid="$(cat "$TRAY_PID_FILE" 2>/dev/null)"
+        if [[ -n "$tray_pid" ]] && kill -0 "$tray_pid" 2>/dev/null; then
+          kill "$tray_pid" 2>/dev/null || true
+        fi
+        rm -f "$TRAY_PID_FILE" 2>/dev/null || true
+        exit 0
+      fi
+      echo "tray not running"
+      exit 1
       ;;
     status)
       # read state if present
@@ -48,7 +71,7 @@ if [[ -n "$cmd" ]]; then
       exit 0
       ;;
     *)
-      echo "Usage: $0 {pause|resume|status}"
+      echo "Usage: $0 {pause|resume|next|tray-quit|status}"
       exit 2
       ;;
   esac
@@ -70,6 +93,13 @@ cleanup() {
   rm -f "$PID_FILE" 2>/dev/null || true
   # keep STATE_FILE if you want; I usually remove it too:
   rm -f "$STATE_FILE" 2>/dev/null || true
+  if [[ -f "$TRAY_PID_FILE" ]]; then
+    tray_pid="$(cat "$TRAY_PID_FILE" 2>/dev/null)"
+    if [[ -n "$tray_pid" ]] && kill -0 "$tray_pid" 2>/dev/null; then
+      kill "$tray_pid" 2>/dev/null || true
+    fi
+    rm -f "$TRAY_PID_FILE" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT INT TERM
 
@@ -77,9 +107,14 @@ trap cleanup EXIT INT TERM
 # --- Glob handling (include .MP3, avoid literal *.mp3 when no matches) ---
 shopt -s nullglob nocaseglob
 
+# --- Configuration ---
 STREAM_NAME="Background Music"
-MUSIC_DIR="/home/cafeine/Music/Background Music/"
-VOLUME_PERCENT=40  # 0-100
+# Directory where this script lives
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Directory to search for mp3 files (change this as needed)
+MP3_SUBDIR="Background Music"
+MUSIC_DIR="$SCRIPT_DIR/$MP3_SUBDIR"
+VOLUME_PERCENT=37  # 0-100
 
 # Fade config
 FADE_SECONDS=10
@@ -87,6 +122,10 @@ FADE_STEPS=10
 
 # Resume background music only after other audio has been silent for X seconds
 RESUME_DELAY_SECONDS=30   # ← change this to whatever you want
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ICON_PATH="$SCRIPT_DIR/my-bg-music.png"
+TRAY_HELPER="$SCRIPT_DIR/my-bg-music-tray.py"
 
 SCALE=$((32768 * VOLUME_PERCENT / 100))
 
@@ -113,6 +152,46 @@ wait_for_pactl() {
     sleep 0.1
   done
   return 1
+}
+
+start_tray() {
+  if [[ -f "$TRAY_PID_FILE" ]]; then
+    tray_pid="$(cat "$TRAY_PID_FILE" 2>/dev/null)"
+    if [[ -n "$tray_pid" ]] && kill -0 "$tray_pid" 2>/dev/null; then
+      return 0
+    fi
+  fi
+
+  local script_path
+  script_path="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
+
+  if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
+    if [[ -x "$TRAY_HELPER" ]]; then
+      "$TRAY_HELPER" --icon "$ICON_PATH" --script "$script_path" &
+      echo "$!" > "$TRAY_PID_FILE"
+      echo "Tray shown"
+      return 0
+    fi
+    return 0
+  fi
+
+  command -v yad >/dev/null 2>&1 || return 0
+  [[ -n "${DISPLAY:-}" ]] || return 0
+
+  local icon_arg
+  if [[ -n "$ICON_PATH" ]] && [[ -f "$ICON_PATH" ]]; then
+    icon_arg="--image=$ICON_PATH"
+  else
+    icon_arg="--image=media-playback-start"
+  fi
+
+  yad --notification \
+    $icon_arg \
+    --text="Background Music" \
+    --menu="Pause!$script_path pause|Resume!$script_path resume|Next song!$script_path next|Quit tray!$script_path tray-quit" &
+
+  echo "$!" > "$TRAY_PID_FILE"
+  echo "Tray shown"
 }
 
 # Return FIRST sink-input id for mpg123
@@ -430,6 +509,7 @@ reconcile_audio_state() {
 # --- Start after login ---
 sleep 8
 start_music
+start_tray
 
 # --- Main polling loop (robust: never misses VLC stop/start edge cases) ---
 while true; do

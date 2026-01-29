@@ -3,24 +3,61 @@ set -euo pipefail
 
 # Directory where this script lives
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Directory to search for scripts (change this as needed)
+SCRIPTS_SUBDIR="Local Scripts"
+SCRIPTS_DIR="$SCRIPT_DIR/$SCRIPTS_SUBDIR"
 THIS_SCRIPT="$(basename "$0")"
 PREFIX="my-"
 
 list_scripts() {
-    shopt -s nullglob
-    echo "Available scripts in: $SCRIPT_DIR"
-    for f in "$SCRIPT_DIR"/*.sh; do
-        base="$(basename "$f")"
-        if [[ "$base" != "$THIS_SCRIPT" ]]; then
-            printf '  %s\n' "$base"
+    echo "Available scripts in: $SCRIPTS_DIR (including one subfolder level)"
+    while IFS= read -r f; do
+        rel="${f#$SCRIPTS_DIR/}"
+        if [[ "$rel" != "$THIS_SCRIPT" ]]; then
+            printf '  %s\n' "$rel"
         fi
-    done
+    done < <(find "$SCRIPTS_DIR" -maxdepth 2 -type f -name "*.sh" | sort)
+}
+
+resolve_script_path() {
+    local target="$1"
+    local matches=()
+    local match
+
+    if [[ "$target" != *.sh ]]; then
+        target="${target}.sh"
+    fi
+
+    if [[ "$target" == */* ]]; then
+        if [[ -f "$SCRIPTS_DIR/$target" ]]; then
+            matches+=("$SCRIPTS_DIR/$target")
+        fi
+    else
+        while IFS= read -r match; do
+            matches+=("$match")
+        done < <(find "$SCRIPTS_DIR" -maxdepth 2 -type f -name "$target")
+    fi
+
+    if [[ ${#matches[@]} -eq 0 ]]; then
+        return 1
+    fi
+
+    if [[ ${#matches[@]} -gt 1 ]]; then
+        echo "Error: multiple matches for '$target':" >&2
+        for match in "${matches[@]}"; do
+            printf '  %s\n' "${match#$SCRIPTS_DIR/}" >&2
+        done
+        return 2
+    fi
+
+    printf '%s\n' "${matches[0]}"
+    return 0
 }
 
 show_help() {
     cat <<EOF
 Usage:
-  $THIS_SCRIPT                    List all .sh scripts in this folder
+  $THIS_SCRIPT                    List all .sh scripts in the scripts folder
   $THIS_SCRIPT --list             List all .sh scripts
   $THIS_SCRIPT <script> [...]     Run <script> (with optional arguments)
 
@@ -55,26 +92,20 @@ case "$1" in
         target="$1"
         shift
 
-        # Add .sh extension if missing
-        if [[ "$target" != *.sh ]]; then
-            target="${target}.sh"
-        fi
-
-        # Try direct path
-        script_path="$SCRIPT_DIR/$target"
+        # Try direct target
+        script_path="$(resolve_script_path "$target" || true)"
 
         # If not found, try with prefix
-        if [[ ! -f "$script_path" ]]; then
+        if [[ -z "$script_path" ]]; then
             prefixed="${PREFIX}${target}"
-            script_prefixed_path="$SCRIPT_DIR/$prefixed"
-            if [[ -f "$script_prefixed_path" ]]; then
-                script_path="$script_prefixed_path"
-            else
-                echo "Error: script '$target' or '${PREFIX}${target}' not found in $SCRIPT_DIR" >&2
-                echo
-                list_scripts
-                exit 1
-            fi
+            script_path="$(resolve_script_path "$prefixed" || true)"
+        fi
+
+        if [[ -z "$script_path" ]]; then
+            echo "Error: script '$target' or '${PREFIX}${target}' not found in $SCRIPTS_DIR" >&2
+            echo
+            list_scripts
+            exit 1
         fi
 
         # Run script (bash if not executable)
