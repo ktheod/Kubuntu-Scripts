@@ -25,15 +25,19 @@ def main():
         return 1
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--icon", default="", help="Path to tray icon png")
+    parser.add_argument("--icon", default="", help="Path to tray icon png (play)")
+    parser.add_argument("--icon-pause", default="", help="Path to tray icon png (pause)")
     parser.add_argument("--script", required=True, help="Path to my-bg-music.sh")
     args = parser.parse_args()
 
     app = QtWidgets.QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
-    if args.icon and os.path.isfile(args.icon):
-        icon = QtGui.QIcon(args.icon)
+    icon_play = args.icon if args.icon and os.path.isfile(args.icon) else ""
+    icon_pause = args.icon_pause if args.icon_pause and os.path.isfile(args.icon_pause) else ""
+
+    if icon_play:
+        icon = QtGui.QIcon(icon_play)
     else:
         icon = QtGui.QIcon.fromTheme("media-playback-start")
 
@@ -42,6 +46,7 @@ def main():
 
     menu = QtWidgets.QMenu()
     now_playing_log = os.path.expanduser("~/.bg-music-nowplaying.log")
+    state_file = "/tmp/my-bg-music.state"
 
     def run_cmd(cmd):
         try:
@@ -82,6 +87,22 @@ def main():
                     break
         except Exception:
             track = ""
+
+        state = ""
+        try:
+            with open(state_file, "r", encoding="utf-8", errors="ignore") as f:
+                state_line = f.read().strip()
+            if "state=paused" in state_line:
+                state = "paused"
+            elif "state=playing" in state_line:
+                state = "playing"
+        except Exception:
+            state = ""
+
+        if state == "paused" and icon_pause:
+            tray.setIcon(QtGui.QIcon(icon_pause))
+        elif state == "playing" and icon_play:
+            tray.setIcon(QtGui.QIcon(icon_play))
 
         if track:
             track_no_ext = os.path.splitext(track)[0]

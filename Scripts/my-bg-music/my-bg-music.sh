@@ -124,7 +124,9 @@ FADE_STEPS=10
 RESUME_DELAY_SECONDS=30   # ← change this to whatever you want
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-ICON_PATH="$SCRIPT_DIR/my-bg-music.png"
+ICON_PLAY_PATH="$SCRIPT_DIR/my-bg-music.png"
+ICON_PAUSE_PATH="$SCRIPT_DIR/my-bg-music-pause.png"
+ICON_PATH="$ICON_PLAY_PATH"
 TRAY_HELPER="$SCRIPT_DIR/my-bg-music-tray.py"
 
 SCALE=$((32768 * VOLUME_PERCENT / 100))
@@ -167,7 +169,7 @@ start_tray() {
 
   if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
     if [[ -x "$TRAY_HELPER" ]]; then
-      "$TRAY_HELPER" --icon "$ICON_PATH" --script "$script_path" &
+      "$TRAY_HELPER" --icon "$ICON_PLAY_PATH" --icon-pause "$ICON_PAUSE_PATH" --script "$script_path" &
       echo "$!" > "$TRAY_PID_FILE"
       echo "Tray shown"
       return 0
@@ -237,6 +239,18 @@ set_sink_input_vol_percent() {
   sid="$(get_mpg123_sink_id)"
   [ -z "$sid" ] && return 0
   pactl set-sink-input-volume "$sid" "${pct}%" >/dev/null 2>&1 || true
+}
+
+set_stream_icon() {
+  local icon_path="$1"
+  local sid="${2:-}"
+
+  [ -z "$sid" ] && sid="$(get_mpg123_sink_id)"
+  [ -z "$sid" ] && return 0
+
+  pactl set-sink-input-properties "$sid" \
+    "application.icon_name=$icon_path" \
+    "media.icon_name=$icon_path" >/dev/null 2>&1 || true
 }
 
 lock_volume_for_startup() {
@@ -318,7 +332,8 @@ start_music() {
     while true; do
       stdbuf -oL -eL env \
       "PULSE_PROP_application.name=$STREAM_NAME" \
-      "PULSE_PROP_application.icon_name=audio-volume-high" \
+      "PULSE_PROP_application.icon_name=$ICON_PLAY_PATH" \
+      "PULSE_PROP_media.icon_name=$ICON_PLAY_PATH" \
       "PULSE_PROP_media.role=music" \
       mpg123 -Z -f "$SCALE" -- "${files[@]}" 2>&1 | \
       while IFS= read -r line; do
@@ -359,6 +374,7 @@ start_music() {
   ignore_events
 
   PAUSED_BY_US=0
+  set_stream_icon "$ICON_PLAY_PATH" "$sid"
   write_status
 }
 
@@ -371,6 +387,7 @@ stop_music() {
 
   lock_fade
   fade_to 0
+  set_stream_icon "$ICON_PAUSE_PATH"
   pkill -STOP -x "mpg123"
   unlock_fade
 
@@ -401,6 +418,7 @@ resume_music() {
   lock_fade
   # Start from 0 then fade up (using the *fresh* sid)
   set_sink_input_vol_percent "$sid" 0
+  set_stream_icon "$ICON_PLAY_PATH" "$sid"
   sleep 0.1
   fade_to "$VOLUME_PERCENT" "$sid"
   unlock_fade
