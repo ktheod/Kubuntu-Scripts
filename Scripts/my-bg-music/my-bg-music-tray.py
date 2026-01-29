@@ -7,19 +7,19 @@ import sys
 
 def try_import_qt():
     try:
-        from PyQt6 import QtGui, QtWidgets
-        return QtGui, QtWidgets
+        from PyQt6 import QtCore, QtGui, QtWidgets
+        return QtCore, QtGui, QtWidgets
     except Exception:
         pass
     try:
-        from PyQt5 import QtGui, QtWidgets
-        return QtGui, QtWidgets
+        from PyQt5 import QtCore, QtGui, QtWidgets
+        return QtCore, QtGui, QtWidgets
     except Exception:
-        return None, None
+        return None, None, None
 
 
 def main():
-    QtGui, QtWidgets = try_import_qt()
+    QtCore, QtGui, QtWidgets = try_import_qt()
     if QtGui is None:
         print("PyQt not available. Install: sudo apt install python3-pyqt5")
         return 1
@@ -41,6 +41,7 @@ def main():
     tray.setToolTip("Background Music")
 
     menu = QtWidgets.QMenu()
+    now_playing_log = os.path.expanduser("~/.bg-music-nowplaying.log")
 
     def run_cmd(cmd):
         try:
@@ -68,6 +69,30 @@ def main():
 
     tray.setContextMenu(menu)
     tray.show()
+
+    def update_tooltip():
+        track = ""
+        try:
+            with open(now_playing_log, "r", encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+            for line in reversed(lines):
+                line = line.strip()
+                if line.startswith("Now playing: "):
+                    track = line[len("Now playing: "):]
+                    break
+        except Exception:
+            track = ""
+
+        if track:
+            track_no_ext = os.path.splitext(track)[0]
+            tray.setToolTip(f"Background Music\nNow Playing: {track_no_ext}")
+        else:
+            tray.setToolTip("Background Music")
+
+    update_tooltip()
+    timer = QtCore.QTimer()
+    timer.timeout.connect(update_tooltip)
+    timer.start(2000)
 
     return app.exec()
 

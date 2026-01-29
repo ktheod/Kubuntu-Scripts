@@ -318,14 +318,20 @@ start_music() {
     while true; do
       stdbuf -oL -eL env \
       "PULSE_PROP_application.name=$STREAM_NAME" \
-      "PULSE_PROP_application.icon_name=media-playback-start" \
+      "PULSE_PROP_application.icon_name=audio-volume-high" \
       "PULSE_PROP_media.role=music" \
       mpg123 -Z -f "$SCALE" -- "${files[@]}" 2>&1 | \
       while IFS= read -r line; do
         echo "$line" >> "$LOG_FILE"
 
         if [[ "$line" == *".mp3"* ]] && ([[ "$line" == *"Playing"* ]] || [[ "$line" == *"Reader"* ]] || [[ "$line" == *@*"@"* ]]); then
-          track=$(echo "$line" | grep -oE '(/[^ ]+)+\.mp3|[^ ]+\.mp3' | head -n 1)
+          track="$(echo "$line" | sed -n 's/.*: \(.*\.mp3\).*/\1/p')"
+          if [ -z "$track" ]; then
+            track="$(echo "$line" | sed -n 's/.*\(\(\/[^"]*\)\.mp3\).*/\1.mp3/p')"
+          fi
+          if [ -z "$track" ]; then
+            track="$(echo "$line" | sed -n 's/.*\([^ ]*\.mp3\).*/\1/p')"
+          fi
           if [ -n "$track" ]; then
             msg="Now playing: $(basename "$track")"
             echo "$msg"
