@@ -3,11 +3,15 @@ set -euo pipefail
 
 # Directory where this script lives
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Directory to search for scripts (change this as needed)
+
+# Directory to search for scripts
 SCRIPTS_SUBDIR="Local Scripts"
 SCRIPTS_DIR="$SCRIPT_DIR/$SCRIPTS_SUBDIR"
+
 THIS_SCRIPT="$(basename "$0")"
 PREFIX="my-"
+
+USE_SUDO=false
 
 list_scripts() {
     echo "Available scripts in: $SCRIPTS_DIR (including one subfolder level)"
@@ -57,62 +61,94 @@ resolve_script_path() {
 show_help() {
     cat <<EOF
 Usage:
-  $THIS_SCRIPT                    List all .sh scripts in the scripts folder
-  $THIS_SCRIPT --list             List all .sh scripts
-  $THIS_SCRIPT <script> [...]     Run <script> (with optional arguments)
+  $THIS_SCRIPT                      List all scripts
+  $THIS_SCRIPT --list               List all scripts
+  $THIS_SCRIPT <script> [...]       Run script
+  $THIS_SCRIPT --sudo <script> [...] Run script with sudo
+
+Options:
+  -l, --list     List available scripts
+  -h, --help     Show help
+  -s, --sudo     Run the selected script with sudo
 
 Prefix Support:
-  If <script> does not start with '${PREFIX}', the runner will try both:
+  If <script> does not start with '${PREFIX}', the runner will try:
       <script>.sh
       ${PREFIX}<script>.sh
 
 Examples:
   $THIS_SCRIPT backup
-  $THIS_SCRIPT my-backup
-  $THIS_SCRIPT backup --full
+  $THIS_SCRIPT --sudo backup
+  $THIS_SCRIPT -s my-backup --full
 EOF
 }
 
-# No arguments: list scripts
+# No arguments = list
 if [[ $# -eq 0 ]]; then
     list_scripts
     exit 0
 fi
 
-case "$1" in
-    -h|--help|help)
-        show_help
-        exit 0
-        ;;
-    -l|--list|list)
-        list_scripts
-        exit 0
-        ;;
-    *)
-        target="$1"
-        shift
-
-        # Try direct target
-        script_path="$(resolve_script_path "$target" || true)"
-
-        # If not found, try with prefix
-        if [[ -z "$script_path" ]]; then
-            prefixed="${PREFIX}${target}"
-            script_path="$(resolve_script_path "$prefixed" || true)"
-        fi
-
-        if [[ -z "$script_path" ]]; then
-            echo "Error: script '$target' or '${PREFIX}${target}' not found in $SCRIPTS_DIR" >&2
-            echo
+# Parse optional flags
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help|help)
+            show_help
+            exit 0
+            ;;
+        -l|--list|list)
             list_scripts
-            exit 1
-        fi
+            exit 0
+            ;;
+        -s|--sudo)
+            USE_SUDO=true
+            shift
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
 
-        # Run script (bash if not executable)
-        if [[ ! -x "$script_path" ]]; then
-            bash "$script_path" "$@"
-        else
-            "$script_path" "$@"
-        fi
-        ;;
-esac
+# Need script name after flags
+if [[ $# -eq 0 ]]; then
+    echo "Error: missing script name"
+    echo
+    show_help
+    exit 1
+fi
+
+target="$1"
+shift
+
+# Try direct target
+script_path="$(resolve_script_path "$target" || true)"
+
+# If not found, try prefixed version
+if [[ -z "$script_path" ]]; then
+    prefixed="${PREFIX}${target}"
+    script_path="$(resolve_script_path "$prefixed" || true)"
+fi
+
+if [[ -z "$script_path" ]]; then
+    echo "Error: script '$target' or '${PREFIX}${target}' not found in $SCRIPTS_DIR" >&2
+    echo
+    list_scripts
+    exit 1
+fi
+
+# Build command
+cmd=()
+
+if [[ "$USE_SUDO" == true ]]; then
+    cmd+=(sudo)
+fi
+
+if [[ ! -x "$script_path" ]]; then
+    cmd+=(bash "$script_path")
+else
+    cmd+=("$script_path")
+fi
+
+# Run script with forwarded args
+"${cmd[@]}" "$@"
